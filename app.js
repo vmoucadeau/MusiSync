@@ -4,6 +4,34 @@ dotenv.config();
 const Plugger = require("pluggers").default;
 const fs = require('fs');
 const { get } = require("http");
+const express = require('express')
+const app = express()
+const port = process.env.PORT||3000
+const passport = require('passport');
+const util = require('util')
+const morgan = require('morgan')
+const cookieParser = require('cookie-parser')
+const bodyParser = require('body-parser')
+const methodOverride = require('method-override')
+const session = require('express-session')
+const expressLayouts = require('express-ejs-layouts')
+
+
+// Configure express
+app.set('views', __dirname + '/views');
+app.set('view engine', 'ejs');
+app.use(expressLayouts)
+app.use(morgan('combined'));
+app.use(cookieParser());
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(methodOverride('X-HTTP-Method-Override'));
+app.use(session({ secret: 'keyboard cat' }));
+
+// Initialize Passport!  Also use passport.session() middleware, to support
+// persistent login sessions (recommended).
+app.use(passport.initialize());
+app.use(passport.session());
 
 
 var sync_playlists = [];
@@ -33,9 +61,7 @@ if(!fs.existsSync("data/")) {
     fs.mkdirSync("data");
 }
 
-if(!fs.existsSync("cache/")) {
-    fs.mkdirSync("cache");
-}
+
 
 if(fs.existsSync("data/sync_playlists.json")) {
     sync_playlists = JSON.parse(fs.readFileSync('data/sync_playlists.json', 'utf8'));
@@ -62,6 +88,15 @@ function contains_track(id, list, service) {
     return false;
 }
 
+function handle_oauth2() {
+    for(const plugin of master.getPlugins()) {
+        if(plugin.pluginConfig["oauth2"]) {
+            console.log("Configuring oauth2 endpoints for " + plugin.pluginConfig["cool_name"]);
+            plugin.pluginCallbacks.handle_oauth2(app);
+        }
+    }
+}
+
 async function searchtrack_id(service, query) {
     const response = await master.getPlugin(service).pluginCallbacks.search(query);
     console.log(response);
@@ -73,6 +108,28 @@ async function get_playlist_tracks(service, playlist_id) {
     const response = await master.getPlugin(service).pluginCallbacks.get_playlist_tracks(playlist_id);
     console.log(response);
     return response;
+}
+
+async function create_playlist(service, name) {
+    const response = await master.getPlugin(service).pluginCallbacks.create_playlist(name);
+    console.log(response);
+    return response;
+}
+
+async function add_playlist_tracks(service, playlist_id, tracks_id) {
+    const response = await master.getPlugin(service).pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id);
+    if(response.data == true) {
+        return true;
+    }
+    return false;
+}
+
+async function remove_playlist_tracks(service, playlist_id, tracks_id) {
+    const response = await master.getPlugin(service).pluginCallbacks.remove_playlist_tracks(playlist_id, tracks_id);
+    if(response.data == true) {
+        return true;
+    }
+    return false;
 }
 
 async function do_playlist_sync(playlist_key, deezer_client) {
@@ -104,5 +161,21 @@ async function do_playlist_sync(playlist_key, deezer_client) {
 }
 
 master.initAll().then(() => {
-    get_playlist_tracks("ms-deezer", 908622995);
+    // get_playlist_tracks("ms-deezer", 908622995);
+    // create_playlist("ms-deezer", "test");
+    handle_oauth2();
+    remove_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
+        console.log(res);
+    })
+    // add_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
+    //     console.log(res);
+    // })
 });
+
+app.get('/', (req, res) => {
+    res.send('Hello World!')
+  })
+  
+app.listen(port, () => {
+console.log(`MusiSync app listening on port ${port}`)
+})
