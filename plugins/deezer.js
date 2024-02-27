@@ -6,31 +6,37 @@ const passport = require('passport');
 const fs = require('fs');
 const axios = require('axios');
 
-if (typeof localStorage === "undefined" || localStorage === null) {
-    var LocalStorage = require('node-localstorage').LocalStorage;
-    localStorage = new LocalStorage('./data/deezer');
+if (typeof deezerStorage === "undefined" || deezerStorage === null) {
+    var DeezerStorage = require('node-localstorage').LocalStorage;
+    deezerStorage = new DeezerStorage('./data/deezer');
   }
 const deezer_client = new deezerjs.Deezer();
 
 var DEEZER_CLIENT_ID = process.env.DEEZER_CLIENT_ID || "";
 var DEEZER_CLIENT_SECRET = process.env.DEEZER_CLIENT_SECRET || "";
 
-var express_app;
-
-if(localStorage.getItem('accessToken') == null) {
-    localStorage.setItem('accessToken', 'false');
+plugin.pluginConfig = {
+    cool_name: "Deezer",
+    name: "ms-deezer",
+    oauth2: true,
+    redirect_uri: "http://localhost:3000/auth/deezer/callback",
+    refresh_needed: true,
 }
 
-if(localStorage.getItem('userid') == null) {
-    localStorage.setItem('userid', 'false');
+if(deezerStorage.getItem('accessToken') == null) {
+    deezerStorage.setItem('accessToken', 'false');
 }
 
-if(localStorage.getItem('username') == null) {
-    localStorage.setItem('username', 'false');
+if(deezerStorage.getItem('userid') == null) {
+    deezerStorage.setItem('userid', 'false');
 }
 
-if(localStorage.getItem('loggedin') == null) {
-    localStorage.setItem('loggedin', 'false');
+if(deezerStorage.getItem('username') == null) {
+    deezerStorage.setItem('username', 'false');
+}
+
+if(deezerStorage.getItem('loggedin') == null) {
+    deezerStorage.setItem('loggedin', 'false');
 }
 
 passport.serializeUser(function(user, done) {
@@ -61,23 +67,19 @@ passport.use(new DeezerStrategy({
         // represent the logged-in user.  In a typical application, you would want
         // to associate the Deezer account with a user record in your database,
         // and return that user instead.
-        localStorage.setItem('loggedin', 'true');
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('userid', profile.id);
-        localStorage.setItem('username', profile.displayName);
+        deezerStorage.setItem('loggedin', 'true');
+        deezerStorage.setItem('accessToken', accessToken);
+        deezerStorage.setItem('userid', profile.id);
+        deezerStorage.setItem('username', profile.displayName);
         return done(null, profile);
     });
   }
 ));
 
-plugin.pluginConfig = {
-    "cool_name": "Deezer",
-    "redirect_uri": "http://localhost:3000/deezer_callback",
-    "oauth2": true
-}
+
 
 function isLogged() {
-    return localStorage.getItem('loggedin') == 'true';
+    return deezerStorage.getItem('loggedin') == 'true';
 }
 
 async function search(query) {
@@ -96,9 +98,9 @@ plugin.pluginCallbacks.search = (query) => {
  * @param {name} name name of the playlist
  */
 plugin.pluginCallbacks.create_playlist = (name) => {
-    if(!isLogged()) { console.log("You're not logged to Deezer"); return false; }
-    return axios.post('https://api.deezer.com/user/' + localStorage.getItem('userid') + '/playlists', {
-        access_token: localStorage.getItem('accessToken'),
+    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
+    return axios.post('https://api.deezer.com/user/' + deezerStorage.getItem('userid') + '/playlists', {
+        access_token: deezerStorage.getItem('accessToken'),
         title: name
     }, {headers: {'content-type': 'application/x-www-form-urlencoded'}});
 }
@@ -122,9 +124,9 @@ plugin.pluginCallbacks.get_playlist_tracks = (playlist_id) => {
  * @returns {Promise} request 
  */
 plugin.pluginCallbacks.add_playlist_tracks = (playlist_id, tracks_id) => {
-    if(!isLogged()) { console.log("You're not logged to Deezer"); return false; }
+    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
     return axios.post('https://api.deezer.com/playlist/' + playlist_id + '/tracks', {
-        access_token: localStorage.getItem('accessToken'),
+        access_token: deezerStorage.getItem('accessToken'),
         songs: tracks_id.join(',')
     }, {headers: {'content-type': 'application/x-www-form-urlencoded'}})
 }
@@ -138,11 +140,10 @@ plugin.pluginCallbacks.add_playlist_tracks = (playlist_id, tracks_id) => {
  * @returns {Boolean} success 
  */
 plugin.pluginCallbacks.remove_playlist_tracks = (playlist_id, tracks_id) => {
-    if(!isLogged()) { console.log("You're not logged to Deezer"); return false; }
-    return axios.delete('https://api.deezer.com/playlist/' + playlist_id + '/tracks?songs=' + tracks_id.join('%2C') + "&access_token=" + localStorage.getItem('accessToken'));
+    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
+    return axios.delete('https://api.deezer.com/playlist/' + playlist_id + '/tracks?songs=' + tracks_id.join('%2C') + "&access_token=" + deezerStorage.getItem('accessToken'));
 };
 
-plugin.pluginCallbacks.login = () => login();
 
 
 plugin.pluginCallbacks.handle_oauth2 = function(app) {  

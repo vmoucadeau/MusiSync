@@ -99,7 +99,6 @@ function handle_oauth2() {
 
 async function searchtrack_id(service, query) {
     const response = await master.getPlugin(service).pluginCallbacks.search(query);
-    console.log(response);
     return response;
 }
 
@@ -118,10 +117,8 @@ async function create_playlist(service, name) {
 
 async function add_playlist_tracks(service, playlist_id, tracks_id) {
     const response = await master.getPlugin(service).pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id);
-    if(response.data == true) {
-        return true;
-    }
-    return false;
+    console.log(response.content);
+    return response.res
 }
 
 async function remove_playlist_tracks(service, playlist_id, tracks_id) {
@@ -164,12 +161,19 @@ master.initAll().then(() => {
     // get_playlist_tracks("ms-deezer", 908622995);
     // create_playlist("ms-deezer", "test");
     handle_oauth2();
-    remove_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
-        console.log(res);
-    })
+    // remove_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
+    //     console.log(res);
+    // })
     // add_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
     //     console.log(res);
     // })
+    // master.getPlugin("ms-spotify").pluginCallbacks.handle_refreshtoken();
+    // add_playlist_tracks("ms-spotify", "5Ts21qAqQtctLRZQDjk1ro", ["spotify:track:4OMJGnvZfDvsePyCwRGO7X"]).then((res) => {
+    //     console.log(res);
+    // });
+    get_playlist_tracks("ms-spotify", "5Ts21qAqQtctLRZQDjk1ro").then((res) => {
+        console.log(res);
+    });
 });
 
 app.get('/', (req, res) => {
