@@ -79,14 +79,17 @@ passport.use(new SpotifyStrategy({
 
 
 
-async function search(query) {
-    const response = await fetch(`https://api.deezer.com/search?q=${query}`);
-    const data = await response.json();
-    return data;
+function is_in_playlist(playlist_content, track_id) {
+    for(const track of playlist_content) {
+        if(track.id == track_id) {
+            return true;
+        }
+    }
+    return false;
 }
 
 
-plugin.pluginCallbacks.search = (query) => {
+plugin.pluginCallbacks.search_track = (query) => {
     return search(query);
 }
 
@@ -94,12 +97,30 @@ plugin.pluginCallbacks.search = (query) => {
  * Create a playlist and return the playlist id
  * @param {name} name name of the playlist
  */
-plugin.pluginCallbacks.create_playlist = (name) => {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
-    return axios.post('https://api.deezer.com/user/' + spotifyStorage.getItem('userid') + '/playlists', {
-        access_token: spotifyStorage.getItem('accessToken'),
-        title: name
-    }, {headers: {'content-type': 'application/x-www-form-urlencoded'}});
+plugin.pluginCallbacks.create_playlist = async function(name, retry = false) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
+    try {
+        var res = await axios.post('https://api.spotify.com/v1/users/' + spotifyStorage.getItem("userid") + '/playlists', {
+            name: name,
+            public: true,
+            collaborative: false,
+            description: "Created by MusicSync"
+        }, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+        return {res: true, content: {id: res.data.id}, error: false};
+    }
+    catch(e) {
+        if(e.response.status == 401) {
+            if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
+                return plugin.pluginCallbacks.create_playlist(name, true);
+            }
+            else {
+                return {res: false, content: false, error: "Unauthorized"};
+            }
+        }
+        else {
+            return {res: false, content: false, error: e.response.data.error};
+        }
+    }
 }
 
 
@@ -109,17 +130,26 @@ plugin.pluginCallbacks.create_playlist = (name) => {
  * @remarks This function doesn't require authentication
  * @returns {Array} tracks 
  */
-plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id) {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
+plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry = false) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
-        var res = await axios.post('https://api.spotify.com/v1/playlists/' + playlist_id, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
-        return {res: true, content: res.data, error: false};
+        var res = await axios.get('https://api.spotify.com/v1/playlists/' + playlist_id + "/tracks?offset=0&limit=100", {
+            headers: {
+                'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'
+            }
+        });
+        return {res: true, content: res.data.items.map((obj) => {
+            return {
+                id: obj.track.uri,
+                name: obj.track.name,
+                artist: obj.track.artists[0].name,
+            }
+        }), error: false};
     }
     catch(e) {
-        console.log(e.response.data);
         if(e.response.status == 401) {
-            if(await plugin.pluginCallbacks.handle_refreshtoken()) {
-                return plugin.pluginCallbacks.get_playlist_tracks(playlist_id);
+            if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
+                return plugin.pluginCallbacks.get_playlist_tracks(playlist_id, true);
             }
             else {
                 return {res: false, content: false, error: "Unauthorized"};
@@ -138,8 +168,8 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id) {
  * @remarks This function require authentication
  * @returns {Promise} request 
  */
-plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks_id) {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
+plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks_id, retry = false) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
         var res = await axios.post('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
             uris: tracks_id
@@ -148,8 +178,8 @@ plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks
     }
     catch(e) {
         if(e.response.status == 401) {
-            if(await plugin.pluginCallbacks.handle_refreshtoken()) {
-                return plugin.pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id);
+            if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
+                return plugin.pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id, true);
             }
             else {
                 return {res: false, content: false, error: "Unauthorized"};
@@ -170,13 +200,14 @@ plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks
  * @returns {Boolean} success 
  */
 plugin.pluginCallbacks.remove_playlist_tracks = (playlist_id, tracks_id) => {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return false; }
     
 }
 
 plugin.pluginCallbacks.logout = () => logout();
 
 plugin.pluginCallbacks.handle_refreshtoken = async function() {
+    console.log("Refreshing " + plugin.pluginConfig.cool_name + " access token...")
     var res = await axios.post('https://accounts.spotify.com/api/token', {
         grant_type: 'refresh_token',
         refresh_token: spotifyStorage.getItem('refreshToken')
@@ -186,7 +217,6 @@ plugin.pluginCallbacks.handle_refreshtoken = async function() {
     }});
     spotifyStorage.setItem('accessToken', res.data.access_token);
     spotifyStorage.setItem('expires_in', res.data.expires_in);
-    console.log(spotifyStorage.getItem('accessToken'));
     return true;
 }
 

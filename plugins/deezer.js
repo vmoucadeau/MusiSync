@@ -82,27 +82,42 @@ function isLogged() {
     return deezerStorage.getItem('loggedin') == 'true';
 }
 
-async function search(query) {
+
+
+
+plugin.pluginCallbacks.search_track = async function(query) {
     const response = await fetch(`https://api.deezer.com/search?q=${query}`);
-    const data = await response.json();
-    return data;
-}
-
-
-plugin.pluginCallbacks.search = (query) => {
-    return search(query);
+    try {
+        const data = await response.json();
+        return {res: true, content: data.map((obj) => {
+            return {
+                id: obj.id,
+                name: obj.title,
+                artist: obj.artist.name,
+            }
+        }), error: false};
+    }
+    catch(err) {
+        return {res: false, content: false, error: err};
+    }
 }
 
 /**
  * Create a playlist and return the playlist id
  * @param {name} name name of the playlist
  */
-plugin.pluginCallbacks.create_playlist = (name) => {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
-    return axios.post('https://api.deezer.com/user/' + deezerStorage.getItem('userid') + '/playlists', {
-        access_token: deezerStorage.getItem('accessToken'),
-        title: name
-    }, {headers: {'content-type': 'application/x-www-form-urlencoded'}});
+plugin.pluginCallbacks.create_playlist = async function (name) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return false; }
+    try {
+        var response = await axios.post('https://api.deezer.com/user/' + deezerStorage.getItem('userid') + '/playlists', {
+            access_token: deezerStorage.getItem('accessToken'),
+            title: name
+        }, {headers: {'content-type': 'application/x-www-form-urlencoded'}});
+        return {res: true, content: response.data, error: false};
+    }
+    catch(err) {
+        return {res: false, content: false, error: err};
+    }
 }
 
 
@@ -112,8 +127,15 @@ plugin.pluginCallbacks.create_playlist = (name) => {
  * @remarks This function doesn't require authentication
  * @returns {Array} tracks 
  */
-plugin.pluginCallbacks.get_playlist_tracks = (playlist_id) => {
-    return deezer_client.api.get_playlist_tracks(playlist_id);
+plugin.pluginCallbacks.get_playlist_tracks = async function (playlist_id) {
+    var response = await deezer_client.api.get_playlist_tracks(playlist_id);
+    return {res: true, content: response.data.map((obj) => {
+        return {
+            id: obj.id,
+            name: obj.title,
+            artist: obj.artist.name,
+        }
+    }), error: false};
 };
 
 /**
@@ -123,12 +145,21 @@ plugin.pluginCallbacks.get_playlist_tracks = (playlist_id) => {
  * @remarks This function require authentication
  * @returns {Promise} request 
  */
-plugin.pluginCallbacks.add_playlist_tracks = (playlist_id, tracks_id) => {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
-    return axios.post('https://api.deezer.com/playlist/' + playlist_id + '/tracks', {
-        access_token: deezerStorage.getItem('accessToken'),
-        songs: tracks_id.join(',')
-    }, {headers: {'content-type': 'application/x-www-form-urlencoded'}})
+plugin.pluginCallbacks.add_playlist_tracks = async function(playlist_id, tracks_id) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return false; }
+    try {
+        var response = await axios.post('https://api.deezer.com/playlist/' + playlist_id + '/tracks', {
+            access_token: deezerStorage.getItem('accessToken'),
+            songs: tracks_id.join(',')
+        }, {headers: {'content-type': 'application/x-www-form-urlencoded'}});
+        if(response.data.error != null) {
+            return {res: false, content: false, error: response.data.error};
+        }
+        return {res: true, content: response.data, error: false};
+    }
+    catch(err) {
+        return {res: false, content: false, error: err};
+    }
 }
 
 
@@ -139,9 +170,18 @@ plugin.pluginCallbacks.add_playlist_tracks = (playlist_id, tracks_id) => {
  * @remarks This function require authentication
  * @returns {Boolean} success 
  */
-plugin.pluginCallbacks.remove_playlist_tracks = (playlist_id, tracks_id) => {
-    if(!isLogged()) { console.log("You're not logged to " + this.pluginConfig.cool_name); return false; }
-    return axios.delete('https://api.deezer.com/playlist/' + playlist_id + '/tracks?songs=' + tracks_id.join('%2C') + "&access_token=" + deezerStorage.getItem('accessToken'));
+plugin.pluginCallbacks.remove_playlist_tracks = async function(playlist_id, tracks_id) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return false; }
+    try {
+        var response = await axios.delete('https://api.deezer.com/playlist/' + playlist_id + '/tracks?songs=' + tracks_id.join('%2C') + "&access_token=" + deezerStorage.getItem('accessToken'));
+        if(response.data.error != null) {
+            return {res: false, content: false, error: response.data.error};
+        }
+        return {res: true, content: response.data, error: false};
+    }
+    catch(err) {
+        return {res: false, content: false, error: err};
+    }
 };
 
 
