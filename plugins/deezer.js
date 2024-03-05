@@ -1,5 +1,5 @@
 const Plugger = require("pluggers").default;
-const plugin = new Plugger("ms-deezer");
+const plugin = new Plugger("deezer");
 const deezerjs = require("deezer-js");
 const DeezerStrategy = require('passport-deezer').Strategy;
 const passport = require('passport');
@@ -17,26 +17,17 @@ var DEEZER_CLIENT_SECRET = process.env.DEEZER_CLIENT_SECRET || "";
 
 plugin.pluginConfig = {
     cool_name: "Deezer",
-    name: "ms-deezer",
+    name: "deezer",
     oauth2: true,
     redirect_uri: "http://localhost:3000/auth/deezer/callback",
     refresh_needed: true,
+    stored_keys : ['accessToken', 'userid', 'username', 'loggedin']
 }
 
-if(deezerStorage.getItem('accessToken') == null) {
-    deezerStorage.setItem('accessToken', 'false');
-}
-
-if(deezerStorage.getItem('userid') == null) {
-    deezerStorage.setItem('userid', 'false');
-}
-
-if(deezerStorage.getItem('username') == null) {
-    deezerStorage.setItem('username', 'false');
-}
-
-if(deezerStorage.getItem('loggedin') == null) {
-    deezerStorage.setItem('loggedin', 'false');
+for(const key of plugin.pluginConfig.stored_keys) {
+    if(deezerStorage.getItem(key) == null) {
+        deezerStorage.setItem(key, 'false');
+    }
 }
 
 passport.serializeUser(function(user, done) {
@@ -88,8 +79,8 @@ function isLogged() {
 plugin.pluginCallbacks.search_track = async function(query) {
     const response = await fetch(`https://api.deezer.com/search?q=${query}`);
     try {
-        const data = await response.json();
-        return {res: true, content: data.map((obj) => {
+        const resp_json = await response.json();
+        return {res: true, content: resp_json.data.map((obj) => {
             return {
                 id: obj.id,
                 name: obj.title,

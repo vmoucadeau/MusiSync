@@ -39,18 +39,18 @@ var sync_playlists = [];
     Playlists Data format:
     [{
         "name": "playlist name",
-        "media_services": ["ms-spotify, "ms-deezer"], // List of media services plugins names
+        "media_services": ["spotify", "deezer"],
         "identifiers" : {
-            "ms-spotify" : "playlist_id",
-            "ms-deezer" : "playlist_id"
-        }
+            "spotify" : "playlist_id",
+            "deezer" : "playlist_id"
+        },
         "tracks" : [
             {
                 "identifiers" : {
-                    "ms-spotify" : "track_id",
-                    "ms-deezer" : "track_id"
+                    "spotify" : "track_id",
+                    "deezer" : "track_id"
                 },
-                "title" : "track_title",
+                "name" : "track_title",
                 "artist" : "track_artist"
             }
         ]
@@ -81,6 +81,7 @@ master.addPlugin(require("./plugins/spotify"));
 function contains_track(id, list, service) {
     var i;
     for (const song of list) {
+        if(song["identifiers"] == undefined) continue;
         if (song["identifiers"][service] == id) {
             return true;
         }
@@ -123,56 +124,93 @@ async function remove_playlist_tracks(service, playlist_id, tracks_id) {
     return response;
 }
 
-async function do_playlist_sync(playlist_key, deezer_client) {
-    var playlist_obj = sync_playlists[playlist_key]
-    console_debug("Syncing playlist: " + playlist_obj["name"]);
-    
+async function do_playlist_sync(playlist) {
+    console.log("Syncing playlist: " + playlist["name"]);
     var playlist_changed = false;
-    var playlist_content = {};
-    var playlist_musicservices = playlist_obj["media_services"];
+    var new_tracks = {};
+    var old_tracks = [];
 
-    for (const service of playlist_obj["media_services"]) {
-        console_debug("Reading playlist from " + service);
-        const playlist = await getPlaylist(service, playlist_obj["identifiers"][service]);
-        playlist_content[service] = playlist;
+    for (const service of playlist["media_services"]) {
+        console.log("Reading playlist from " + service);
+        const playlist_tracks = await get_playlist_tracks(service, playlist["identifiers"][service]);
+        new_tracks[service] = [];
+        for(const track of playlist_tracks.content) {
+            if(!contains_track(track["id"], playlist["tracks"], service)) {
+                new_tracks[service].push({
+                    "identifiers" : {
+                        [service] : track["id"]
+                    },
+                    "name" : track["name"],
+                    "artist" : track["artist"]
+                });
+                playlist_changed = true;
+            }
+        }
+        // for(const track of playlist["tracks"]) {
+        //     if(!contains_track(track["identifiers"][service], playlist_tracks.content, service)) {
+        //         console.log("Track not found in remote playlist, removing...");
+        //         old_tracks[service].push(track["identifiers"][service]);
+        //         playlist_changed = true;
+        //     }
+        // }
+    }
+
+    for (const origin_service in new_tracks) {
+        if (new_tracks[origin_service].length == 0) continue;
+        // Search for the tracks in the other service
+        // var new_tracks = [];
+        for (const target_service of playlist["media_services"]) {
+            if(origin_service == target_service) continue;
+            var tracks_toadd = [];
+            for(const track of new_tracks[origin_service]) {
+                const search_result = await search_track(target_service, track["name"] + " " + track["artist"]);
+                if(search_result.content.length > 0) {
+                    tracks_toadd.push(search_result.content[0]["id"]);
+                    new_tracks[origin_service]["identifiers"][target_service] = search_result.content[0]["id"]; 
+                }
+                else {
+                    console.log("Track not found in " + target_service + " searching for " + track["name"] + " " + track["artist"]);
+                }
+                // const add_result = await add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_id);
+            }
+            console.log("New tracks for " + target_service + " : " + tracks_id.concat(", "));
+        }
     }
     
-    for(const new_playlist of playlist_content) {
-        console_debug("Checking " + new_playlist + " playlist");
-        
-        
-    }
-
-    
-
-
-    if(playlist_changed) {
-        save_playlists();
-    }
 }
 
+async function musisync() {
+    await do_playlist_sync(sync_playlists[0]);
+}
 master.initAll().then(() => {
-    // get_playlist_tracks("ms-deezer", 908622995);
+    // get_playlist_tracks("deezer", 908622995);
     handle_oauth2();
-    // create_playlist("ms-deezer", "test").then((res) => {
+    // create_playlist("deezer", "test").then((res) => {
     //     console.log(res);
     
     // });
-    remove_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
-        console.log(res);
-    })
-    add_playlist_tracks("ms-deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
-        console.log(res);
-    })
-    // add_playlist_tracks("ms-spotify", "5Ts21qAqQtctLRZQDjk1ro", ["spotify:track:4OMJGnvZfDvsePyCwRGO7X"]).then((res) => {
+    // remove_playlist_tracks("deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
+    //     console.log(res);
+    // })
+    // add_playlist_tracks("deezer", 11854630901, [1153141332, 1133114822]).then((res) => {
+    //     console.log(res);
+    // })
+    // add_playlist_tracks("spotify", "5Ts21qAqQtctLRZQDjk1ro", ["spotify:track:4OMJGnvZfDvsePyCwRGO7X"]).then((res) => {
     //     console.log(res);
     // });
-    // get_playlist_tracks("ms-spotify", "5Ts21qAqQtctLRZQDjk1ro").then((res) => {
+    // get_playlist_tracks("spotify", "5Ts21qAqQtctLRZQDjk1ro").then((res) => {
     //     console.log(res.content);
     // });
-    // create_playlist("ms-spotify", "test").then((res) => {
+    // create_playlist("spotify", "test").then((res) => {
     //     console.log(res);
     // });
+    // search_track("spotify", "Back to the Start Michael Schulte").then((res) => {
+    //     console.log(res);
+    // });
+    // search_track("deezer", "Back to the Start Michael Schulte").then((res) => {
+    //     console.log(res);
+    // });
+    musisync();
 });
 
 app.get('/', (req, res) => {

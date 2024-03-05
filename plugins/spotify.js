@@ -1,5 +1,5 @@
 const Plugger = require("pluggers").default;
-const plugin = new Plugger("ms-spotify");
+const plugin = new Plugger("spotify");
 const SpotifyStrategy = require('passport-spotify').Strategy;
 const passport = require('passport');
 const axios = require('axios');
@@ -15,7 +15,7 @@ var SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || "";
 
 plugin.pluginConfig = {
   cool_name: "Spotify",
-  name: "ms-spotify",
+  name: "spotify",
   oauth2: true,
   redirect_uri: "http://localhost:3000/auth/spotify/callback",
   refresh_needed: true,
@@ -89,8 +89,31 @@ function is_in_playlist(playlist_content, track_id) {
 }
 
 
-plugin.pluginCallbacks.search_track = (query) => {
-    return search(query);
+plugin.pluginCallbacks.search_track = async function(query, retry = false) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
+    try {
+        var res = await axios.get('https://api.spotify.com/v1/search?q=' + encodeURI(query) + "&type=track", {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+        return {res: true, content: res.data.tracks.items.map((obj) => {
+            return {
+                id: obj.id,
+                name: obj.name,
+                artist: obj.artists[0].name,
+            }}), error: false};
+    }
+    catch(e) {
+        console.log(e);
+        if(e.response.status == 401) {
+            if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
+                return plugin.pluginCallbacks.search_track(query, true);
+            }
+            else {
+                return {res: false, content: false, error: "Unauthorized"};
+            }
+        }
+        else {
+            return {res: false, content: false, error: e.response.data.error};
+        }
+    }
 }
 
 /**
