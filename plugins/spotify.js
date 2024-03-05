@@ -244,9 +244,9 @@ plugin.pluginCallbacks.handle_refreshtoken = async function() {
 }
 
 plugin.pluginCallbacks.handle_oauth2 = function(app) {  
-    // Redirect the user to Deezer for authentication.  When complete,
-    // Deezer will redirect the user back to the application at
-    //     /auth/deezer/callback
+    // Redirect the user to Spotify for authentication.  When complete,
+    // Spotify will redirect the user back to the application at
+    //     /auth/spotify/callback
     app.get('/auth/spotify', passport.authenticate('spotify', { scope: ['user-read-email', 'user-read-private', 'playlist-modify-private', 'playlist-modify-public', 'playlist-read-private'] }));
     app.get('/auth/spotify/logout', function(req, res){
         req.logout(function(err) {
@@ -256,7 +256,7 @@ plugin.pluginCallbacks.handle_oauth2 = function(app) {
         });
     });
     
-    // Deezer will redirect the user to this URL after approval.  Finish the
+    // Spotify will redirect the user to this URL after approval.  Finish the
     // authentication process by attempting to obtain an access token.  If
     // access was granted, the user will be logged in.  Otherwise,
     // authentication has failed.
