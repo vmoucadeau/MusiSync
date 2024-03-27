@@ -95,9 +95,10 @@ plugin.pluginCallbacks.search_track = async function(query, retry = false) {
         var res = await axios.get('https://api.spotify.com/v1/search?q=' + encodeURI(query) + "&type=track", {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
         return {res: true, content: res.data.tracks.items.map((obj) => {
             return {
-                id: obj.id,
+                id: "spotify:track:" + obj.id,
                 name: obj.name,
                 artist: obj.artists[0].name,
+                length: Math.round(obj.duration_ms/1000)
             }}), error: false};
     }
     catch(e) {
@@ -166,6 +167,7 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry =
                 id: obj.track.uri,
                 name: obj.track.name,
                 artist: obj.track.artists[0].name,
+                length: Math.round(obj.track.duration_ms/1000)
             }
         }), error: false};
     }
@@ -194,6 +196,10 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry =
 plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks_id, retry = false) {
     if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
+        // remove duplicates
+        var playlist_tracks = await plugin.pluginCallbacks.get_playlist_tracks(playlist_id);
+        var tracks_id = tracks_id.filter((track_id) => !is_in_playlist(playlist_tracks.content, track_id));
+
         var res = await axios.post('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
             uris: tracks_id
         }, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});

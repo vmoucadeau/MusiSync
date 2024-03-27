@@ -71,6 +71,10 @@ else {
     fs.writeFileSync("data/sync_playlists.json", JSON.stringify(sync_playlists, null, 4));
 }
 
+function save_playlists() {
+    fs.writeFileSync("data/sync_playlists.json", JSON.stringify(sync_playlists, null, 4));
+}
+
 // Create instance
 const master = new Plugger("master");
 
@@ -98,6 +102,8 @@ function handle_oauth2() {
     }
 }
 
+
+
 async function search_track(service, query) {
     const response = await master.getPlugin(service).pluginCallbacks.search_track(query);
     return response;
@@ -124,11 +130,12 @@ async function remove_playlist_tracks(service, playlist_id, tracks_id) {
     return response;
 }
 
-async function do_playlist_sync(playlist) {
+async function do_playlist_sync(playlist_key) {
+    const playlist = sync_playlists[playlist_key];
     console.log("Syncing playlist: " + playlist["name"]);
-    var playlist_changed = false;
-    var new_tracks = {};
-    var old_tracks = [];
+    let playlist_changed = false;
+    let new_tracks = {};
+    let old_tracks = [];
 
     for (const service of playlist["media_services"]) {
         console.log("Reading playlist from " + service);
@@ -141,7 +148,8 @@ async function do_playlist_sync(playlist) {
                         [service] : track["id"]
                     },
                     "name" : track["name"],
-                    "artist" : track["artist"]
+                    "artist" : track["artist"],
+                    "length" : track["length"]
                 });
                 playlist_changed = true;
             }
@@ -154,7 +162,6 @@ async function do_playlist_sync(playlist) {
         //     }
         // }
     }
-
     for (const origin_service in new_tracks) {
         if (new_tracks[origin_service].length == 0) continue;
         // Search for the tracks in the other service
@@ -162,25 +169,44 @@ async function do_playlist_sync(playlist) {
         for (const target_service of playlist["media_services"]) {
             if(origin_service == target_service) continue;
             var tracks_toadd = [];
-            for(const track of new_tracks[origin_service]) {
+            for(let i = 0; i < new_tracks[origin_service].length; i++) {
+                let track = new_tracks[origin_service][i];
                 const search_result = await search_track(target_service, track["name"] + " " + track["artist"]);
                 if(search_result.content.length > 0) {
-                    tracks_toadd.push(search_result.content[0]["id"]);
-                    new_tracks[origin_service]["identifiers"][target_service] = search_result.content[0]["id"]; 
+                    let found = false;
+                    for(const searchtrack of search_result.content) {
+                        if(Math.abs(searchtrack["length"] - track["length"]) < 2) {
+                            tracks_toadd.push(searchtrack["id"]);
+                            track["identifiers"][target_service] = searchtrack["id"]; 
+                            found = true;
+                            console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + searchtrack["length"]);
+                            break;
+                        }
+                    }
+                    if(!found) {
+                        console.log("Track not found in " + target_service + " searching for " + track["name"] + " " + track["artist"] + " (" + track["length"] + "s)");
+                    }
                 }
                 else {
-                    console.log("Track not found in " + target_service + " searching for " + track["name"] + " " + track["artist"]);
+                    console.log("Track not found in " + target_service + " searching for " + track["name"] + " " + track["artist"] + " (" + track["length"] + "s)");
                 }
                 // const add_result = await add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_id);
             }
-            console.log("New tracks for " + target_service + " : " + tracks_id.concat(", "));
+            if(tracks_toadd.length > 0) {
+                add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_toadd).then((res) => {
+                    console.log(res);
+                }); 
+                console.log("New tracks for " + target_service + " : " + tracks_toadd.concat(" "));
+            }
         }
+        sync_playlists[playlist_key]["tracks"] = sync_playlists[playlist_key]["tracks"].concat(new_tracks[origin_service]);
     }
+    save_playlists();
     
 }
 
 async function musisync() {
-    await do_playlist_sync(sync_playlists[0]);
+    await do_playlist_sync(0);
 }
 master.initAll().then(() => {
     // get_playlist_tracks("deezer", 908622995);

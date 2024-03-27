@@ -74,6 +74,14 @@ function isLogged() {
 }
 
 
+function is_in_playlist(playlist_content, track_id) {
+    for(const track of playlist_content) {
+        if(track.id == track_id) {
+            return true;
+        }
+    }
+    return false;
+}
 
 
 plugin.pluginCallbacks.search_track = async function(query) {
@@ -85,6 +93,7 @@ plugin.pluginCallbacks.search_track = async function(query) {
                 id: obj.id,
                 name: obj.title,
                 artist: obj.artist.name,
+                length: obj.duration
             }
         }), error: false};
     }
@@ -125,6 +134,7 @@ plugin.pluginCallbacks.get_playlist_tracks = async function (playlist_id) {
             id: obj.id,
             name: obj.title,
             artist: obj.artist.name,
+            length: obj.duration
         }
     }), error: false};
 };
@@ -139,6 +149,10 @@ plugin.pluginCallbacks.get_playlist_tracks = async function (playlist_id) {
 plugin.pluginCallbacks.add_playlist_tracks = async function(playlist_id, tracks_id) {
     if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return false; }
     try {
+        // remove duplicates
+        var playlist_tracks = await plugin.pluginCallbacks.get_playlist_tracks(playlist_id);
+        var tracks_id = tracks_id.filter((track_id) => !is_in_playlist(playlist_tracks.content, track_id));
+
         var response = await axios.post('https://api.deezer.com/playlist/' + playlist_id + '/tracks', {
             access_token: deezerStorage.getItem('accessToken'),
             songs: tracks_id.join(',')
