@@ -84,8 +84,10 @@ function is_in_playlist(playlist_content, track_id) {
 }
 
 
-plugin.pluginCallbacks.search_track = async function(query) {
-    const response = await fetch(`https://api.deezer.com/search?q=${query}`);
+plugin.pluginCallbacks.search_track = async function(query_title, query_artist) {
+    const url = `https://api.deezer.com/search?q=${query_title + " - " + query_artist}`;
+    console.log(url);
+    const response = await fetch(url);
     try {
         const resp_json = await response.json();
         return {res: true, content: resp_json.data.map((obj) => {
@@ -152,7 +154,7 @@ plugin.pluginCallbacks.add_playlist_tracks = async function(playlist_id, tracks_
         // remove duplicates
         var playlist_tracks = await plugin.pluginCallbacks.get_playlist_tracks(playlist_id);
         var tracks_id = tracks_id.filter((track_id) => !is_in_playlist(playlist_tracks.content, track_id));
-
+        if(tracks_id.length == 0) return {res: true, content: "No tracks to add", error: false};
         var response = await axios.post('https://api.deezer.com/playlist/' + playlist_id + '/tracks', {
             access_token: deezerStorage.getItem('accessToken'),
             songs: tracks_id.join(',')

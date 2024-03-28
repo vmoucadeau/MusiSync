@@ -89,10 +89,10 @@ function is_in_playlist(playlist_content, track_id) {
 }
 
 
-plugin.pluginCallbacks.search_track = async function(query, retry = false) {
+plugin.pluginCallbacks.search_track = async function(query_title, query_artist, retry = false) {
     if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
-        var res = await axios.get('https://api.spotify.com/v1/search?q=' + encodeURI(query) + "&type=track", {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+        var res = await axios.get('https://api.spotify.com/v1/search?q=' + encodeURI(query_title + " - " + query_artist) + "&type=track", {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
         return {res: true, content: res.data.tracks.items.map((obj) => {
             return {
                 id: "spotify:track:" + obj.id,
@@ -199,13 +199,17 @@ plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks
         // remove duplicates
         var playlist_tracks = await plugin.pluginCallbacks.get_playlist_tracks(playlist_id);
         var tracks_id = tracks_id.filter((track_id) => !is_in_playlist(playlist_tracks.content, track_id));
-
-        var res = await axios.post('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
-            uris: tracks_id
-        }, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
-        return {res: true, content: res.data, error: false};
+        //if(track_id.length == 0) return {res: true, content: "No tracks to add", error: false};
+        if(tracks_id.length != 0) {
+            var res = await axios.post('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
+                uris: tracks_id
+            }, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+            return {res: true, content: res.data, error: false};
+        }
+        return {res: true, content: "No track to add", error: false};
     }
     catch(e) {
+        if(e.response == undefined) return {res: false, content: false, error: "No tracks to add"}
         if(e.response.status == 401) {
             if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
                 return plugin.pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id, true);

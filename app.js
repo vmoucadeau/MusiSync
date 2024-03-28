@@ -104,8 +104,8 @@ function handle_oauth2() {
 
 
 
-async function search_track(service, query) {
-    const response = await master.getPlugin(service).pluginCallbacks.search_track(query);
+async function search_track(service, query_title, query_artist) {
+    const response = await master.getPlugin(service).pluginCallbacks.search_track(query_title, query_artist);
     return response;
 }
 
@@ -135,7 +135,7 @@ async function do_playlist_sync(playlist_key) {
     console.log("Syncing playlist: " + playlist["name"]);
     let playlist_changed = false;
     let new_tracks = {};
-    let old_tracks = [];
+    let old_tracks = {};
 
     for (const service of playlist["media_services"]) {
         console.log("Reading playlist from " + service);
@@ -154,14 +154,34 @@ async function do_playlist_sync(playlist_key) {
                 playlist_changed = true;
             }
         }
-        // for(const track of playlist["tracks"]) {
-        //     if(!contains_track(track["identifiers"][service], playlist_tracks.content, service)) {
-        //         console.log("Track not found in remote playlist, removing...");
-        //         old_tracks[service].push(track["identifiers"][service]);
-        //         playlist_changed = true;
-        //     }
-        // }
+        for(const track of playlist["tracks"]) {
+            if(!contains_track(track["identifiers"][service], playlist_tracks.content.map((item) =>{
+                return {
+                    "identifiers" : {
+                        [service] : item["id"]
+                    },
+                    "name" : item["name"],
+                    "artist" : item["artist"],
+                    "length" : item["length"]
+                }
+            }), service)) {
+                console.log(track["name"] + " not found in " + service + " playlist, removing it");
+                for(const track_service in track["identifiers"]) {
+                    if(track_service == service) continue;
+                    old_tracks[track_service] = old_tracks[track_service] || [];
+                    old_tracks[track_service].push(track["identifiers"][track_service]);
+                }
+                playlist_changed = true;
+            }
+        }
     }
+    for (const origin_service in old_tracks) {
+        // if (old_tracks[origin_service].length == 0) continue;
+        // remove_playlist_tracks(origin_service, playlist["identifiers"][origin_service], old_tracks[origin_service]).then((res) => {
+        //     console.log(res);
+        // });
+    }
+
     for (const origin_service in new_tracks) {
         if (new_tracks[origin_service].length == 0) continue;
         // Search for the tracks in the other service
@@ -171,7 +191,7 @@ async function do_playlist_sync(playlist_key) {
             var tracks_toadd = [];
             for(let i = 0; i < new_tracks[origin_service].length; i++) {
                 let track = new_tracks[origin_service][i];
-                const search_result = await search_track(target_service, track["name"] + " " + track["artist"]);
+                const search_result = await search_track(target_service, track["name"], track["artist"]);
                 if(search_result.content.length > 0) {
                     let found = false;
                     for(const searchtrack of search_result.content) {
