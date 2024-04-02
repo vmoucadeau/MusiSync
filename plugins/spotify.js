@@ -92,7 +92,7 @@ function is_in_playlist(playlist_content, track_id) {
 plugin.pluginCallbacks.search_track = async function(query_title, query_artist, retry = false) {
     if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
-        var res = await axios.get('https://api.spotify.com/v1/search?q=' + encodeURI(query_title + " - " + query_artist) + "&type=track", {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+        var res = await axios.get('https://api.spotify.com/v1/search?&q=' + encodeURI(query_title + " - " + query_artist) + "&type=track", {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
         return {res: true, content: res.data.tracks.items.map((obj) => {
             return {
                 id: "spotify:track:" + obj.id,
@@ -119,8 +119,32 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist, 
 }
 
 // TODO
-plugin.pluginCallbacks.search_track_by_isrc = async function(isrc) {
-    return {res: false, content: false, error: true};
+plugin.pluginCallbacks.search_track_by_isrc = async function(isrc, retry = false) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
+    try {
+        var res = await axios.get('https://api.spotify.com/v1/search?type=track&isrc:' + isrc, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+        return {res: true, content: res.data.tracks.items.map((obj) => {
+            return {
+                id: "spotify:track:" + obj.id,
+                name: obj.name,
+                artist: obj.artists[0].name,
+                length: Math.round(obj.duration_ms/1000),
+                isrc: obj.external_ids.isrc
+            }}), error: false};
+    }
+    catch(e) {
+        if(e.response.status == 401) {
+            if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
+                return plugin.pluginCallbacks.search_track_by_isrc(query, true);
+            }
+            else {
+                return {res: false, content: false, error: "Unauthorized"};
+            }
+        }
+        else {
+            return {res: false, content: false, error: e.response.data.error};
+        }
+    }
 }
 
 
