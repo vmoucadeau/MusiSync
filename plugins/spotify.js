@@ -98,7 +98,8 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist, 
                 id: "spotify:track:" + obj.id,
                 name: obj.name,
                 artist: obj.artists[0].name,
-                length: Math.round(obj.duration_ms/1000)
+                length: Math.round(obj.duration_ms/1000),
+                isrc: obj.external_ids.isrc
             }}), error: false};
     }
     catch(e) {
@@ -116,6 +117,13 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist, 
         }
     }
 }
+
+// TODO
+plugin.pluginCallbacks.search_track_by_isrc = async function(isrc) {
+    return {res: false, content: false, error: true};
+}
+
+
 
 /**
  * Create a playlist and return the playlist id
@@ -167,7 +175,8 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry =
                 id: obj.track.uri,
                 name: obj.track.name,
                 artist: obj.track.artists[0].name,
-                length: Math.round(obj.track.duration_ms/1000)
+                length: Math.round(obj.track.duration_ms/1000),
+                isrc: obj.track.external_ids.isrc
             }
         }), error: false};
     }

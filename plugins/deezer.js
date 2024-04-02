@@ -86,7 +86,6 @@ function is_in_playlist(playlist_content, track_id) {
 
 plugin.pluginCallbacks.search_track = async function(query_title, query_artist) {
     const url = `https://api.deezer.com/search?q=${query_title + " - " + query_artist}`;
-    console.log(url);
     const response = await fetch(url);
     try {
         const resp_json = await response.json();
@@ -95,9 +94,28 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist) 
                 id: obj.id,
                 name: obj.title,
                 artist: obj.artist.name,
-                length: obj.duration
+                length: obj.duration,
+                isrc: obj.isrc
             }
         }), error: false};
+    }
+    catch(err) {
+        return {res: false, content: false, error: err};
+    }
+}
+
+plugin.pluginCallbacks.search_track_by_isrc = async function(isrc) {
+    const url = `https://api.deezer.com/track/isrc:${isrc}`;
+    const response = await fetch(url);
+    try {
+        const resp_json = await response.json();
+        return {res: true, content: [{
+            id: resp_json.id,
+            name: resp_json.title,
+            artist: resp_json.artist.name,
+            length: resp_json.duration,
+            isrc: resp_json.isrc
+        }], error: false};
     }
     catch(err) {
         return {res: false, content: false, error: err};
@@ -136,7 +154,8 @@ plugin.pluginCallbacks.get_playlist_tracks = async function (playlist_id) {
             id: obj.id,
             name: obj.title,
             artist: obj.artist.name,
-            length: obj.duration
+            length: obj.duration,
+            isrc: obj.isrc
         }
     }), error: false};
 };

@@ -103,9 +103,35 @@ function handle_oauth2() {
 }
 
 
+async function search_track_by_isrc(service, isrc) {
+    const response = await master.getPlugin(service).pluginCallbacks.search_track_by_isrc(isrc);
+    return response;
+}
 
-async function search_track(service, query_title, query_artist) {
-    const response = await master.getPlugin(service).pluginCallbacks.search_track(query_title, query_artist);
+async function search_track(service, track, isrc = null) {
+    if(isrc != null && isrc != undefined) {
+        let getbyisrc = await search_track_by_isrc(service, isrc);
+        if(getbyisrc.res) {
+            return getbyisrc.content[0];
+        }
+    }
+    const response = await master.getPlugin(service).pluginCallbacks.search_track(track["name"], track["artist"]);
+    if(response.res) {
+        if(response.content.length > 0) {
+            let found = false;
+            for(const searchtrack of response.content) {
+                if(Math.abs(searchtrack["length"] - track["length"]) < 2) {
+                    return searchtrack;
+                }
+            }
+            if(!found) {
+                return search_track(service, track, track["isrc"]);
+            }
+        }
+        else {
+            return search_track(service, track, track["isrc"]);
+        }
+    }
     return response;
 }
 
@@ -149,7 +175,8 @@ async function do_playlist_sync(playlist_key) {
                     },
                     "name" : track["name"],
                     "artist" : track["artist"],
-                    "length" : track["length"]
+                    "length" : track["length"],
+                    "isrc" : track["isrc"]
                 });
                 playlist_changed = true;
             }
@@ -162,7 +189,8 @@ async function do_playlist_sync(playlist_key) {
                     },
                     "name" : item["name"],
                     "artist" : item["artist"],
-                    "length" : item["length"]
+                    "length" : item["length"],
+                    "isrc" : item["isrc"]
                 }
             }), service)) {
                 console.log(track["name"] + " not found in " + service + " playlist, removing it");
@@ -191,26 +219,16 @@ async function do_playlist_sync(playlist_key) {
             var tracks_toadd = [];
             for(let i = 0; i < new_tracks[origin_service].length; i++) {
                 let track = new_tracks[origin_service][i];
-                const search_result = await search_track(target_service, track["name"], track["artist"]);
-                if(search_result.content.length > 0) {
-                    let found = false;
-                    for(const searchtrack of search_result.content) {
-                        if(Math.abs(searchtrack["length"] - track["length"]) < 2) {
-                            tracks_toadd.push(searchtrack["id"]);
-                            track["identifiers"][target_service] = searchtrack["id"]; 
-                            found = true;
-                            console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + searchtrack["length"]);
-                            break;
-                        }
-                    }
-                    if(!found) {
-                        console.log("Track not found in " + target_service + " searching for " + track["name"] + " " + track["artist"] + " (" + track["length"] + "s)");
-                    }
+                const search_result = await search_track(target_service, track, track["isrc"]);
+                if(search_result != false) {
+                    console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + search_result["length"]);
+                    tracks_toadd.push(search_result["id"]);
+                    track["identifiers"][target_service] = search_result["id"]; 
                 }
                 else {
-                    console.log("Track not found in " + target_service + " searching for " + track["name"] + " " + track["artist"] + " (" + track["length"] + "s)");
+                    console.log("Track not found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"]);
+                    new_tracks[origin_service].splice(i, 1); // Remove the track from the list, prevent to make mistakes on origin_service
                 }
-                // const add_result = await add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_id);
             }
             if(tracks_toadd.length > 0) {
                 add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_toadd).then((res) => {
@@ -221,7 +239,7 @@ async function do_playlist_sync(playlist_key) {
         }
         sync_playlists[playlist_key]["tracks"] = sync_playlists[playlist_key]["tracks"].concat(new_tracks[origin_service]);
     }
-    save_playlists();
+    // save_playlists();
     
 }
 
