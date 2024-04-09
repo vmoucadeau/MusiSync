@@ -122,7 +122,7 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist, 
 plugin.pluginCallbacks.search_track_by_isrc = async function(isrc, retry = false) {
     if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
-        var res = await axios.get('https://api.spotify.com/v1/search?type=track&isrc:' + isrc, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
+        var res = await axios.get('https://api.spotify.com/v1/search?&type=track&q=isrc:' + isrc, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});
         return {res: true, content: res.data.tracks.items.map((obj) => {
             return {
                 id: "spotify:track:" + obj.id,
@@ -135,7 +135,7 @@ plugin.pluginCallbacks.search_track_by_isrc = async function(isrc, retry = false
     catch(e) {
         if(e.response.status == 401) {
             if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
-                return plugin.pluginCallbacks.search_track_by_isrc(query, true);
+                return plugin.pluginCallbacks.search_track_by_isrc(isrc, true);
             }
             else {
                 return {res: false, content: false, error: "Unauthorized"};
@@ -265,9 +265,34 @@ plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks
  * @remarks This function require authentication
  * @returns {Boolean} success 
  */
-plugin.pluginCallbacks.remove_playlist_tracks = (playlist_id, tracks_id) => {
-    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return false; }
-    
+plugin.pluginCallbacks.remove_playlist_tracks = async function(playlist_id, tracks_id, retry = false) {
+    if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
+    try {
+        if(tracks_id.length != 0) {
+            var res = await axios.delete('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
+                headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'},
+                data:{
+                    tracks: tracks_id.map((track_id) => {return {uri: track_id}})
+                }
+            });
+            return {res: true, content: res.data, error: false};
+        }
+        return {res: true, content: "No track to remove", error: false};
+    }
+    catch(e) {
+        if(e.response == undefined) return {res: false, content: false, error: "No tracks to remove"}
+        if(e.response.status == 401) {
+            if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
+                return plugin.pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id, true);
+            }
+            else {
+                return {res: false, content: false, error: "Unauthorized"};
+            }
+        }
+        else {
+            return {res: false, content: false, error: e.response.data.error};
+        }
+    }
 }
 
 plugin.pluginCallbacks.logout = () => logout();

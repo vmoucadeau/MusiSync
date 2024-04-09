@@ -74,6 +74,7 @@ function isLogged() {
 }
 
 
+
 function is_in_playlist(playlist_content, track_id) {
     for(const track of playlist_content) {
         if(track.id == track_id) {
