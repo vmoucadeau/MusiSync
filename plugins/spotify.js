@@ -103,7 +103,6 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist, 
             }}), error: false};
     }
     catch(e) {
-        console.log(e);
         if(e.response.status == 401) {
             if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
                 return plugin.pluginCallbacks.search_track(query, true);
@@ -189,12 +188,16 @@ plugin.pluginCallbacks.create_playlist = async function(name, retry = false) {
 plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry = false) {
     if(!isLogged()) { console.log("You're not logged to " + plugin.pluginConfig.cool_name); return {res: false, content: false, error: "Not logged in"}; }
     try {
+        let content = [];
         var res = await axios.get('https://api.spotify.com/v1/playlists/' + playlist_id + "/tracks?offset=0&limit=100", {
             headers: {
                 'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'
             }
         });
-        return {res: true, content: res.data.items.map((obj) => {
+        if(res.data == undefined) return {res: false, content: false, error: "Spotify request error"};
+        if(res.data.error) return {res: false, content: false, error: res.data.error};
+        if(res.data.total == 0) return {res: true, content: [], error: false};
+        content = content.concat(res.data.items.map((obj) => {
             return {
                 id: obj.track.uri,
                 name: obj.track.name,
@@ -202,10 +205,32 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry =
                 length: Math.round(obj.track.duration_ms/1000),
                 isrc: obj.track.external_ids.isrc
             }
-        }), error: false};
+        }));
+        let tracks_nb = res.data.total;
+        for(let i = 1; i <= Math.trunc(tracks_nb/100); i++) {
+            let res = await axios.get('https://api.spotify.com/v1/playlists/' + playlist_id + "/tracks?offset=" + i*100 + "&limit=100", {
+                headers: {
+                    'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'
+                }
+            });
+            if(res.data == undefined) return {res: false, content: false, error: "Spotify request error"};
+            if(res.data.error) return {res: false, content: false, error: res.data.error};
+            if(res.data.total == 0) break;
+            content = content.concat(res.data.items.map((obj) => {
+                return {
+                    id: obj.track.uri,
+                    name: obj.track.name,
+                    artist: obj.track.artists[0].name,
+                    length: Math.round(obj.track.duration_ms/1000),
+                    isrc: obj.track.external_ids.isrc
+                }
+            }));
+        }
+        return {res: true, content: content, error: false};
     }
     catch(e) {
-        if(e.response.status == 401) {
+        console.log(e);
+        if(e.response != undefined && e.response.status == 401) {
             if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
                 return plugin.pluginCallbacks.get_playlist_tracks(playlist_id, true);
             }
@@ -234,6 +259,13 @@ plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks
         var tracks_id = tracks_id.filter((track_id) => !is_in_playlist(playlist_tracks.content, track_id));
         //if(track_id.length == 0) return {res: true, content: "No tracks to add", error: false};
         if(tracks_id.length != 0) {
+            if(tracks_id.length > 100) {
+                let splited = tracks_id.splice(0,100);
+                var preres = await plugin.pluginCallbacks.add_playlist_tracks(playlist_id, splited);
+                if(!preres.res) return preres;
+                var lastres = await plugin.pluginCallbacks.add_playlist_tracks(playlist_id, tracks_id);
+                return lastres;
+            }
             var res = await axios.post('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
                 uris: tracks_id
             }, {headers: {'Authorization': 'Bearer ' + spotifyStorage.getItem("accessToken"), 'Content-Type': 'application/json'}});

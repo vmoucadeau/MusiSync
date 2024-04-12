@@ -35,6 +35,7 @@ app.use(passport.session());
 
 
 var sync_playlists = [];
+let syncing = false;
 /*
     Playlists Data format:
     [{
@@ -82,10 +83,11 @@ const master = new Plugger("master");
 master.addPlugin(require("./plugins/deezer"));
 master.addPlugin(require("./plugins/spotify"));
 
-function contains_track(id, list, service) {
+function contains_track(track, list, service) {
+    if(list == undefined || list == []) return false;
     for (const song of list) {
         if(song["identifiers"] == undefined) continue;
-        if (song["identifiers"][service] == id) {
+        if (song["identifiers"][service] == track["identifiers"][service] || song["isrc"] == track["isrc"]) {
             return true;
         }
     }
@@ -120,7 +122,9 @@ async function search_track(service, track, isrc = null) {
     if(isrc != null && isrc != undefined) {
         let getbyisrc = await search_track_by_isrc(service, isrc);
         if(getbyisrc.res) {
-            return getbyisrc.content[0];
+            if(getbyisrc.content.length > 0 && getbyisrc.content[0]["id"] != undefined) {
+                return getbyisrc.content[0];
+            }
         }
     }
     const response = await master.getPlugin(service).pluginCallbacks.search_track(track["name"], track["artist"]);
@@ -128,7 +132,7 @@ async function search_track(service, track, isrc = null) {
         if(response.content.length > 0) {
             let found = false;
             for(const searchtrack of response.content) {
-                if(Math.abs(searchtrack["length"] - track["length"]) < 2) {
+                if(Math.abs(searchtrack["length"] - track["length"]) < 5) {
                     return searchtrack;
                 }
             }
@@ -146,7 +150,20 @@ async function search_track(service, track, isrc = null) {
 
 async function get_playlist_tracks(service, playlist_id) {
     const response = await master.getPlugin(service).pluginCallbacks.get_playlist_tracks(playlist_id);
-    return response;
+    if(response.res) {
+        return {res: true, content: response.content.map((item) => {
+            return {
+                "identifiers":{
+                        [service]: item["id"]
+                },
+                "name": item["name"],
+                "artist": item["artist"],
+                "length": item["length"],
+                "isrc": item["isrc"]
+            }
+        }), error:false};
+    }
+    else return {res: false, content: [], error: response.error};
 }
 
 async function create_playlist(service, name) {
@@ -165,105 +182,116 @@ async function remove_playlist_tracks(service, playlist_id, tracks_id) {
 }
 
 async function do_playlist_sync(playlist_key) {
+    syncing = true;
     const playlist = sync_playlists[playlist_key];
     console.log("Syncing playlist: " + playlist["name"]);
     let playlist_changed = false;
     let new_tracks = {};
-    let old_tracks = {};
+    let old_tracks = [];
     
     for (const service of playlist["media_services"]) {
         console.log("Reading playlist from " + service);
         const playlist_tracks = await get_playlist_tracks(service, playlist["identifiers"][service]);
         new_tracks[service] = [];
-        for(const track of playlist_tracks.content) {
-            if(!contains_track(track["id"], playlist["tracks"], service)) {
-                console.log(track["name"] + " found in " + service + " playlist, adding it");
-                console.log(track);
-                new_tracks[service].push({
-                    "identifiers" : {
-                        [service] : track["id"]
-                    },
-                    "name" : track["name"],
-                    "artist" : track["artist"],
-                    "length" : track["length"],
-                    "isrc" : track["isrc"]
-                });
-                playlist_changed = true;
-            }
-        }
         let i = 0;
         for(const track of playlist["tracks"]) {
-            if(!contains_track(track["identifiers"][service], playlist_tracks.content.map((item) =>{
-                return {
-                    "identifiers" : {
-                        [service] : item["id"]
-                    },
-                    "name" : item["name"],
-                    "artist" : item["artist"],
-                    "length" : item["length"],
-                    "isrc" : item["isrc"]
-                }
-            }), service)) {
+            if(!contains_track(track, playlist_tracks.content, service)) {
                 console.log(track["name"] + " not found in " + service + " playlist, removing it");
-                for(const track_service in track["identifiers"]) {
-                    if(track_service == service) continue;
-                    old_tracks[track_service] = old_tracks[track_service] || [];
-                    old_tracks[track_service].push(track["identifiers"][track_service]);
-                }
-                //playlist["tracks"].splice(i, 1);
+                old_tracks.push(track);
+                playlist["tracks"].splice(i, 1);
                 playlist_changed = true;
             }
             i++;
         }
+        for(const track of playlist_tracks.content) {
+            if(!contains_track(track, playlist["tracks"], service) && !contains_track(track, old_tracks, service)) {
+                console.log(track["name"] + " found in " + service + " playlist, adding it");
+                new_tracks[service].push(track);
+                playlist_changed = true;
+            }
+        }
+        
     }
-    for (const service in old_tracks) {
-        if (old_tracks[service].length == 0) continue;
-        console.log(old_tracks[service]);
-        remove_playlist_tracks(service, playlist["identifiers"][service], old_tracks[service]).then((res) => {
-            console.log(res);
-        });
-    }
+    if(playlist_changed) {
+        let old_tracks_ids = {};
+        for (const track of old_tracks) {
+            for(const service in track["identifiers"]) {
+                old_tracks_ids[service] = old_tracks_ids[service] || [];
+                old_tracks_ids[service].push(track["identifiers"][service]);
+            }
+        }
+        console.log("Old tracks ids : " + JSON.stringify(old_tracks_ids));
+        for (const service in old_tracks_ids) {
+            if (old_tracks_ids[service].length == 0) continue;
+            const remove_req = await remove_playlist_tracks(service, playlist["identifiers"][service], old_tracks_ids[service]);
+            if(!remove_req.res) {
+                console.log("[" + service + "] Error while removing tracks")
+                console.log(remove_req);
+                
+            }
+            else {
+                console.log("[" + service + "] Track remove result : " + remove_req.res);
+            }        
+        }
 
-    for (const origin_service in new_tracks) {
-        if (new_tracks[origin_service].length == 0) continue;
-        // Search for the tracks in the other service
-        // var new_tracks = [];
-        for (const target_service of playlist["media_services"]) {
-            if(origin_service == target_service) continue;
-            var tracks_toadd = [];
-            for(let i = 0; i < new_tracks[origin_service].length; i++) {
-                let track = new_tracks[origin_service][i];
-                const search_result = await search_track(target_service, track, track["isrc"]);
-                if(search_result != false) {
-                    console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + search_result["length"]);
-                    tracks_toadd.push(search_result["id"]);
-                    track["identifiers"][target_service] = search_result["id"]; 
-                    
+        for (const origin_service in new_tracks) {
+            if (new_tracks[origin_service].length == 0) continue;
+            // Search for the tracks in the other service
+            // var new_tracks = [];
+            for (const target_service of playlist["media_services"]) {
+                if(origin_service == target_service) continue;
+                var tracks_toadd = [];
+                for(let i = 0; i < new_tracks[origin_service].length; i++) {
+                    let track = new_tracks[origin_service][i];
+                    const search_result = await search_track(target_service, track, track["isrc"]);
+                    if(search_result != false && search_result != undefined && search_result["id"] != undefined) {
+                        console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + (search_result["length"] || "nolength"));
+                        tracks_toadd.push(search_result["id"]);
+                        track["identifiers"][target_service] = search_result["id"]; 
+                        
+                    }
+                    else {
+                        console.log("Track not found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"]);
+                        new_tracks[origin_service].splice(i, 1); // Remove the track from the list, prevent to make mistakes on origin_service
+                    }
                 }
-                else {
-                    console.log("Track not found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"]);
-                    new_tracks[origin_service].splice(i, 1); // Remove the track from the list, prevent to make mistakes on origin_service
+                if(tracks_toadd.length > 0) {
+                    const addtracks_req = await add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_toadd);
+                    console.log("New tracks for " + target_service + " : " + tracks_toadd.concat(" "));
+                    if(!addtracks_req.res) {
+                        console.log("[" + target_service + "] Error while adding tracks")
+                        console.log(addtracks_req);
+                        
+                    }
+                    else {
+                        console.log("[" + target_service + "] Track add result : " + addtracks_req.res);
+                    }
                 }
             }
-            if(tracks_toadd.length > 0) {
-                add_playlist_tracks(target_service, playlist["identifiers"][target_service], tracks_toadd).then((res) => {
-                    console.log(res);
-                }); 
-                console.log("New tracks for " + target_service + " : " + tracks_toadd.concat(" "));
+            for(const track of new_tracks[origin_service]) {
+                if(!is_track_saved(track, playlist)) {
+                    playlist["tracks"].push(track);
+                }
             }
         }
-        for(const track of new_tracks[origin_service]) {
-            if(!is_track_saved(track, playlist)) {
-                playlist["tracks"].push(track);
-            }
-        }
+        save_playlists();
     }
-    save_playlists();
-    
+    syncing = false;
 }
 
 async function musisync() {
-    await do_playlist_sync(0);
+    for(let i = 0; i < sync_playlists.length; i++) {
+        if(syncing) break;
+        await do_playlist_sync(i);
+    }
+    setInterval(async () => {
+        if(!syncing) {
+            for(let i = 0; i < sync_playlists.length; i++) {
+                if(syncing) break;
+                await do_playlist_sync(i);
+            }
+        };
+    }, 10000);
 }
 master.initAll().then(() => {
     // get_playlist_tracks("deezer", 908622995);
