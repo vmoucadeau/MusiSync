@@ -87,7 +87,7 @@ function contains_track(track, list, service) {
     if(list == undefined || list == []) return false;
     for (const song of list) {
         if(song["identifiers"] == undefined) continue;
-        if (song["identifiers"][service] == track["identifiers"][service] || song["isrc"] == track["isrc"]) {
+        if (song["identifiers"][service] == track["identifiers"][service] || song["isrc"] == track["isrc"] || track["identifiers"][service] == false) { // If the track is already in the playlist or if the track is not found in the service
             return true;
         }
     }
@@ -130,19 +130,13 @@ async function search_track(service, track, isrc = null) {
     const response = await master.getPlugin(service).pluginCallbacks.search_track(track["name"], track["artist"]);
     if(response.res) {
         if(response.content.length > 0) {
-            let found = false;
             for(const searchtrack of response.content) {
                 if(Math.abs(searchtrack["length"] - track["length"]) < 5) {
                     return searchtrack;
                 }
             }
-            if(!found) {
-                return search_track(service, track, track["isrc"]);
-            }
         }
-        else {
-            return search_track(service, track, track["isrc"]);
-        }
+        return {res: false, content: response.content, error: "Track not found"};
     }
     return response;
 }
@@ -197,6 +191,7 @@ async function do_playlist_sync(playlist_key) {
         for(const track of playlist["tracks"]) {
             if(!contains_track(track, playlist_tracks.content, service)) {
                 console.log(track["name"] + " not found in " + service + " playlist, removing it");
+                delete track["identifiers"][service];
                 old_tracks.push(track);
                 playlist["tracks"].splice(i, 1);
                 playlist_changed = true;
@@ -217,21 +212,27 @@ async function do_playlist_sync(playlist_key) {
         for (const track of old_tracks) {
             for(const service in track["identifiers"]) {
                 old_tracks_ids[service] = old_tracks_ids[service] || [];
+                if(track["identifiers"][service] == false) {
+                    console.log("Can't remove " + track["name"] + " from " + service + " because it was not found in the service");
+                    continue;
+                }
                 old_tracks_ids[service].push(track["identifiers"][service]);
             }
         }
-        console.log("Old tracks ids : " + JSON.stringify(old_tracks_ids));
-        for (const service in old_tracks_ids) {
-            if (old_tracks_ids[service].length == 0) continue;
-            const remove_req = await remove_playlist_tracks(service, playlist["identifiers"][service], old_tracks_ids[service]);
-            if(!remove_req.res) {
-                console.log("[" + service + "] Error while removing tracks")
-                console.log(remove_req);
-                
+        if(old_tracks.length > 0) {
+            console.log("Old tracks ids : " + JSON.stringify(old_tracks_ids));
+            for (const service in old_tracks_ids) {
+                if (old_tracks_ids[service].length == 0) continue;
+                const remove_req = await remove_playlist_tracks(service, playlist["identifiers"][service], old_tracks_ids[service]);
+                if(!remove_req.res) {
+                    console.log("[" + service + "] Error while removing tracks")
+                    console.log(remove_req);
+                    
+                }
+                else {
+                    console.log("[" + service + "] Track remove result : " + remove_req.res);
+                }        
             }
-            else {
-                console.log("[" + service + "] Track remove result : " + remove_req.res);
-            }        
         }
 
         for (const origin_service in new_tracks) {
@@ -252,7 +253,7 @@ async function do_playlist_sync(playlist_key) {
                     }
                     else {
                         console.log("Track not found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"]);
-                        new_tracks[origin_service].splice(i, 1); // Remove the track from the list, prevent to make mistakes on origin_service
+                        track["identifiers"][target_service] = false; // Track not found in the service
                     }
                 }
                 if(tracks_toadd.length > 0) {

@@ -229,7 +229,6 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry =
         return {res: true, content: content, error: false};
     }
     catch(e) {
-        console.log(e);
         if(e.response != undefined && e.response.status == 401) {
             if(await plugin.pluginCallbacks.handle_refreshtoken() && !retry) {
                 return plugin.pluginCallbacks.get_playlist_tracks(playlist_id, true);
