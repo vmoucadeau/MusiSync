@@ -112,7 +112,7 @@ plugin.pluginCallbacks.search_track = async function(query_title, query_artist, 
             }
         }
         else {
-            return {res: false, content: false, error: e.response.data.error};
+            return {res: false, content: false, error: e.response};
         }
     }
 }
@@ -141,7 +141,7 @@ plugin.pluginCallbacks.search_track_by_isrc = async function(isrc, retry = false
             }
         }
         else {
-            return {res: false, content: false, error: e.response.data.error};
+            return {res: false, content: false, error: e.response};
         }
     }
 }
@@ -173,7 +173,7 @@ plugin.pluginCallbacks.create_playlist = async function(name, retry = false) {
             }
         }
         else {
-            return {res: false, content: false, error: e.response.data.error};
+            return {res: false, content: false, error: e.response};
         }
     }
 }
@@ -238,7 +238,7 @@ plugin.pluginCallbacks.get_playlist_tracks = async function(playlist_id, retry =
             }
         }
         else {
-            return {res: false, content: false, error: e.response.data.error};
+            return {res: false, content: false, error: e.response};
         }
     }
 }
@@ -283,7 +283,7 @@ plugin.pluginCallbacks.add_playlist_tracks = async function (playlist_id, tracks
             }
         }
         else {
-            return {res: false, content: false, error: e.response.data.error};
+            return {res: false, content: false, error: e.response};
         }
     }
 }
@@ -321,7 +321,7 @@ plugin.pluginCallbacks.remove_playlist_tracks = async function(playlist_id, trac
             }
         }
         else {
-            return {res: false, content: false, error: e.response.data.error};
+            return {res: false, content: false, error: e.response};
         }
     }
 }

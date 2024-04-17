@@ -123,7 +123,7 @@ async function search_track(service, track, isrc = null) {
         let getbyisrc = await search_track_by_isrc(service, isrc);
         if(getbyisrc.res) {
             if(getbyisrc.content.length > 0 && getbyisrc.content[0]["id"] != undefined) {
-                return getbyisrc.content[0];
+                return {res: true, content: getbyisrc.content[0], error: false};
             }
         }
     }
@@ -132,13 +132,13 @@ async function search_track(service, track, isrc = null) {
         if(response.content.length > 0) {
             for(const searchtrack of response.content) {
                 if(Math.abs(searchtrack["length"] - track["length"]) < 5) {
-                    return searchtrack;
+                    return {res: true, content: searchtrack, error: false};
                 }
             }
         }
-        return {res: false, content: response.content, error: "Track not found"};
+        return {res: true, content: null, error: "Track not found"};
     }
-    return response;
+    return {res: false, content: false, error: response.error};
 }
 
 
@@ -245,7 +245,13 @@ async function do_playlist_sync(playlist_key) {
                 for(let i = 0; i < new_tracks[origin_service].length; i++) {
                     let track = new_tracks[origin_service][i];
                     const search_result = await search_track(target_service, track, track["isrc"]);
-                    if(search_result != false && search_result != undefined && search_result["id"] != undefined) {
+                    if(!search_result.res) {
+                        delete new_tracks[origin_service][i];
+                        console.log("[" + target_service + "] Error while searching track, will be added next time...");
+                        console.log(search_result.error);
+                        continue;
+                    }
+                    if(search_result.content != undefined && search_result.content["id"] != undefined) {
                         console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + (search_result["length"] || "nolength"));
                         tracks_toadd.push(search_result["id"]);
                         track["identifiers"][target_service] = search_result["id"]; 
