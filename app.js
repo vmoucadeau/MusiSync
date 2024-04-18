@@ -183,9 +183,13 @@ async function do_playlist_sync(playlist_key) {
     let new_tracks = {};
     let old_tracks = [];
     
-    for (const service of playlist["media_services"]) {
-        console.log("Reading playlist from " + service);
+    for (const service in playlist["identifiers"]) {
+        // console.log("Reading playlist from " + service);
         const playlist_tracks = await get_playlist_tracks(service, playlist["identifiers"][service]);
+        if(!playlist_tracks.res) { // Prevent destroying everything if one service is down or too many requests
+            console.log(playlist_tracks.error);
+            continue;
+        }
         new_tracks[service] = [];
         let i = 0;
         for(const track of playlist["tracks"]) {
@@ -223,15 +227,15 @@ async function do_playlist_sync(playlist_key) {
             console.log("Old tracks ids : " + JSON.stringify(old_tracks_ids));
             for (const service in old_tracks_ids) {
                 if (old_tracks_ids[service].length == 0) continue;
-                const remove_req = await remove_playlist_tracks(service, playlist["identifiers"][service], old_tracks_ids[service]);
-                if(!remove_req.res) {
-                    console.log("[" + service + "] Error while removing tracks")
-                    console.log(remove_req);
+                // const remove_req = await remove_playlist_tracks(service, playlist["identifiers"][service], old_tracks_ids[service]);
+                // if(!remove_req.res) {
+                //     console.log("[" + service + "] Error while removing tracks")
+                //     console.log(remove_req);
                     
-                }
-                else {
-                    console.log("[" + service + "] Track remove result : " + remove_req.res);
-                }        
+                // }
+                // else {
+                //     console.log("[" + service + "] Track remove result : " + remove_req.res);
+                // }        
             }
         }
 
@@ -239,7 +243,7 @@ async function do_playlist_sync(playlist_key) {
             if (new_tracks[origin_service].length == 0) continue;
             // Search for the tracks in the other service
             // var new_tracks = [];
-            for (const target_service of playlist["media_services"]) {
+            for (const target_service in playlist["identifiers"]) {
                 if(origin_service == target_service) continue;
                 var tracks_toadd = [];
                 for(let i = 0; i < new_tracks[origin_service].length; i++) {
@@ -252,10 +256,9 @@ async function do_playlist_sync(playlist_key) {
                         continue;
                     }
                     if(search_result.content != undefined && search_result.content["id"] != undefined) {
-                        console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + (search_result["length"] || "nolength"));
-                        tracks_toadd.push(search_result["id"]);
-                        track["identifiers"][target_service] = search_result["id"]; 
-                        
+                        console.log("Track found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"] + " " + (search_result.content["length"] || "nolength"));
+                        tracks_toadd.push(search_result.content["id"]);
+                        track["identifiers"][target_service] = search_result.content["id"]; 
                     }
                     else {
                         console.log("Track not found in " + target_service + " : " + track["name"] + " " + track["artist"] + " " + track["length"]);
