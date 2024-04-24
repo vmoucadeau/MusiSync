@@ -173,7 +173,7 @@ plugin.pluginCallbacks.add_playlist_tracks = async function(playlist_id, tracks_
     try {
         // remove duplicates
         var playlist_tracks = await plugin.pluginCallbacks.get_playlist_tracks(playlist_id);
-        var tracks_id = tracks_id.filter((track_id) => !is_in_playlist(playlist_tracks.content, track_id));
+        var tracks_id = tracks_id.filter((track_id, pos) => (!is_in_playlist(playlist_tracks.content, track_id) && tracks_id.indexOf(track_id) == pos));
         if(tracks_id.length == 0) return {res: true, content: "No tracks to add", error: false};
         var response = await axios.post('https://api.deezer.com/playlist/' + playlist_id + '/tracks', {
             access_token: deezerStorage.getItem('accessToken'),
